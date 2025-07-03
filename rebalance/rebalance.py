@@ -409,6 +409,7 @@ def rebalance(
     count_sendpay = 0
     time_getroute = 0
     time_sendpay = 0
+    min_fees = float('inf')
 
     try:
         while int(time.time()) - start_ts < retry_for and not rebalance_stopping():
@@ -438,13 +439,17 @@ def rebalance(
             setup_routing_fees(route, msatoshi)
             fees = route_get_msat(route[0]) - msatoshi
 
+            if int(fees) < min_fees:
+                min_fees = int(fees)
+                plugin.log("Minimum fee updated to " + str(min_fees) + "msats or " + str(int(min_fees*100000./int(msatoshi))*0.001) + "%)", "debug")
+
             # check fee and exclude worst channel the next time
             # NOTE: the int(msat) casts are just a workaround for outdated pylightning versions
             if fees > exemptfee and int(fees) > int(msatoshi) * maxfeepercent / 100:
                 worst_channel = find_worst_channel(route)
                 if worst_channel is None:
                     raise RpcError(
-                        "rebalance", payload, {"message": "Insufficient fee"}
+                            "rebalance", payload, {"message": "Insufficient fee (minimum fee found was " + str(min_fees) + "msats or " + str(int(min_fees*100000./int(msatoshi))*0.001) + "%)"}
                     )
                 excludes.append(
                     worst_channel["channel"] + "/" + str(worst_channel["direction"])
@@ -528,7 +533,7 @@ def rebalance(
 
     except Exception as e:
         return cleanup(label, payload, rpc_result, e)
-    rpc_result = {"status": "error", "message": "Timeout reached"}
+    rpc_result = {"status": "error", "message": "Timeout reached (minimum fee found was " + str(min_fees) + "msats or " + str(int(min_fees*100000./int(msatoshi))*0.001) + "%)"}
     return cleanup(label, payload, rpc_result)
 
 
